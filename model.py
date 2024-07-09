@@ -4,23 +4,23 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchmetrics.regression import R2Score, SymmetricMeanAbsolutePercentageError
 
-from component import *
+from layer import *
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class KNNTransformer(pl.LightningModule):
-    def __init__(self, embedding_dim, hidden_dim, output_dim, num_heads, num_layers, trend_len, num_trends, gpu_num, lr):
+    def __init__(self, embedding_dim, hidden_dim, output_len, num_heads, num_layers, input_len, num_items, gpu_num, lr):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
-        self.output_len = output_dim
+        self.output_len = output_len
         self.gpu_num = gpu_num
         self.save_hyperparameters()
         self.lr = lr
 
-        self.trend_encoder = TrendEncoder(output_dim, hidden_dim, trend_len, num_trends, gpu_num)
+        self.item_sales_encoder = ItemSalesEncoder(hidden_dim, input_len, num_items, gpu_num)
         self.static_feature_encoder = StaticFeatureEncoder(embedding_dim, hidden_dim)
 
         # Decoder
@@ -40,15 +40,15 @@ class KNNTransformer(pl.LightningModule):
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0)).to('cuda:'+str(self.gpu_num))
         return mask
 
-    def forward(self, trends, image_embedding, text_embedding, meta_data):
+    def forward(self, k_item_sales, image_embedding, text_embedding, meta_data):
         # Encode features and get inputs
-        trend_encoding = self.trend_encoder(trends)
+        k_item_sales_embedding = self.item_sales_encoder(k_item_sales)
 
         # Fuse static features together
         static_feature_fusion = self.static_feature_encoder(image_embedding, text_embedding, meta_data)
             
         tgt = static_feature_fusion.unsqueeze(0)
-        memory = trend_encoding
+        memory = k_item_sales_embedding
         decoder_out, attn_weights = self.decoder(tgt, memory)
         forecast = self.decoder_fc(decoder_out)
 
@@ -68,8 +68,8 @@ class KNNTransformer(pl.LightningModule):
         self.phase_step(test_batch, phase='test')
 
     def phase_step(self, batch, phase):
-        item_sales, scale_factors, nearest_neighbor_sales, image_embeddings, text_embeddings, meta_data = batch 
-        forecasted_sales, _ = self.forward(nearest_neighbor_sales, image_embeddings, text_embeddings, meta_data)
+        item_sales, scale_factors, k_item_sales, image_embeddings, text_embeddings, meta_data = batch
+        forecasted_sales, _ = self.forward(k_item_sales, image_embeddings, text_embeddings, meta_data)
         
         loss = F.mse_loss(item_sales, forecasted_sales.squeeze())
         adjusted_smape, r2_score = self.get_score(item_sales, forecasted_sales)

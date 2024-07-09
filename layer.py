@@ -2,7 +2,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import models
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=104):
@@ -71,35 +70,21 @@ class StaticFeatureEncoder(nn.Module):
         return features
 
 
-class TrendEncoder(nn.Module):
-    def __init__(self, forecast_horizon, embedding_dim, trend_len, num_trends, gpu_num):
+class ItemSalesEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len, num_items, gpu_num):
         super().__init__()
-        self.forecast_horizon = forecast_horizon
-        self.input_linear = TimeDistributed(nn.Linear(num_trends, embedding_dim))
-        self.pos_embedding = PositionalEncoding(embedding_dim, max_len=trend_len)
+        self.input_linear = TimeDistributed(nn.Linear(num_items, embedding_dim))
+        self.pos_embedding = PositionalEncoding(embedding_dim, max_len=input_len)
         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
         self.gpu_num = gpu_num
 
-    def _generate_encoder_mask(self, size, forecast_horizon):
-        mask = torch.zeros((size, size))
-        split = math.gcd(size, forecast_horizon)
-        for i in range(0, size, split):
-            mask[i:i+split, i:i+split] = 1
-        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0)).to('cuda:'+str(self.gpu_num))
-        return mask
-    
-    def _generate_square_subsequent_mask(self, size):
-        mask = (torch.triu(torch.ones(size, size)) == 1).transpose(0, 1)
-        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0)).to('cuda:'+str(self.gpu_num))
-        return mask
-
-    def forward(self, trends):
-        if trends.dim() <= 2: trends = trends.unsqueeze(dim=-1)
-        trend_emb = self.input_linear(trends)
-        trend_emb = self.pos_embedding(trend_emb)
-        trend_emb = self.encoder(trend_emb)
-        return trend_emb
+    def forward(self, input):
+        if input.dim() <= 2: input = input.unsqueeze(dim=-1)
+        emb = self.input_linear(input)
+        emb = self.pos_embedding(emb)
+        emb = self.encoder(emb)
+        return emb
 
 
 class TransformerDecoderLayer(nn.Module):

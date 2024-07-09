@@ -40,7 +40,7 @@ def run(args):
         scale_df,
         image_embedding,
         text_embedding,
-        k=args.num_trends,
+        k=args.num_items,
         train=True
     )
 
@@ -52,7 +52,7 @@ def run(args):
         scale_df,
         image_embedding,
         text_embedding,
-        k=args.num_trends,
+        k=args.num_items,
         train=False
     )
 
@@ -62,11 +62,11 @@ def run(args):
     model = KNNTransformer(
         embedding_dim=args.embedding_dim,
         hidden_dim=args.hidden_dim,
-        output_dim=args.output_dim,
+        output_len=args.output_len,
         num_heads=args.num_heads,
         num_layers=args.num_layers,
-        trend_len=args.output_dim,
-        num_trends=args.num_trends,
+        input_len=args.input_len,
+        num_items=args.num_items,
         gpu_num=args.gpu_num,
         lr=0.0001
     )
@@ -98,7 +98,7 @@ def run(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Zero-shot sales forecasting')
+    parser = argparse.ArgumentParser(description='Zero-Shot-Item-Sales-Forecasting')
     # General arguments
     parser.add_argument('--data_dir', type=str, default='data/preprocessed')
     parser.add_argument('--log_dir', type=str, default='log')
@@ -108,19 +108,19 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='KNN-Transformer')
-    parser.add_argument('--trend_len', type=int, default=12)
-    parser.add_argument('--num_trends', type=int, default=30)
+    parser.add_argument('--num_items', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
-    parser.add_argument('--output_dim', type=int, default=12)
+    parser.add_argument('--input_len', type=int, default=12)
+    parser.add_argument('--output_len', type=int, default=12)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--num_layers', type=int, default=2)
 
     # wandb arguments
     parser.add_argument('--wandb_entity', type=str, default='bonbak')
-    parser.add_argument('--wandb_proj', type=str, default='Zero-Shot Item Sales Forecasting')
-    parser.add_argument('--wandb_run', type=str, default='Run1')
+    parser.add_argument('--wandb_proj', type=str, default='Zero-Shot-Item-Sales-Forecasting')
+    parser.add_argument('--wandb_run', type=str, default='K20')
 
     args = parser.parse_args()
     run(args)

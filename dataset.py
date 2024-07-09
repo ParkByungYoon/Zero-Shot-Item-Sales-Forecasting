@@ -36,10 +36,9 @@ class ZeroShotDataset(Dataset):
             scale = self.scale_df.loc[item_id].values
             sales = ((self.sales_df.loc[item_id]-scale[0]) / scale[1]).values            
             
-            dist_idx = np.where(self.sorted_item_ids == item_id)[0][0] # distance matrix 에서의 index
-            k_nearest_idx = self.sorted_by_eucdist[dist_idx][:self.k]
+            target_idx = np.where(self.sorted_item_ids == item_id)[0][0] # distance matrix 에서의 index
+            k_nearest_idx = self.sorted_by_eucdist[target_idx][:self.k]
             k_nearest_item_ids = self.sorted_item_ids[k_nearest_idx]
-            # nn_sales = self.sales_df.loc[k_nearest_item_ids].mean().values # mean
             nn_sales = self.sales_df.loc[k_nearest_item_ids].values
             nn_sales = (nn_sales - nn_sales.mean()) / nn_sales.std()
             
