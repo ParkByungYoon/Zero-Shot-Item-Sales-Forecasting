@@ -71,18 +71,33 @@ class StaticFeatureEncoder(nn.Module):
 
 
 class ItemSalesEncoder(nn.Module):
-    def __init__(self, embedding_dim, input_len, num_items, gpu_num):
+    def __init__(self, embedding_dim, input_len, num_items):
         super().__init__()
         self.input_linear = TimeDistributed(nn.Linear(num_items, embedding_dim))
         self.pos_embedding = PositionalEncoding(embedding_dim, max_len=input_len)
         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-        self.gpu_num = gpu_num
 
     def forward(self, input):
         if input.dim() <= 2: input = input.unsqueeze(dim=-1)
         emb = self.input_linear(input)
         emb = self.pos_embedding(emb)
+        emb = self.encoder(emb)
+        return emb
+
+class InversedItemSalesEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len):
+        super().__init__()
+        self.input_linear = TimeDistributed(nn.Linear(input_len, embedding_dim))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+    def forward(self, input):
+
+        input = input.permute(0,2,1)
+
+        if input.dim() <= 2: input = input.unsqueeze(dim=-1)
+        emb = self.input_linear(input)
         emb = self.encoder(emb)
         return emb
 

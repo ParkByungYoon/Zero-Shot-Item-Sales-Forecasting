@@ -26,7 +26,6 @@ def get_item_sales_per_week():
     return sales_df
 
 
-
 def train_test_split(sales_df):
     # Meta-Data
     meta_df = pd.read_csv(os.path.join(data_dir, 'meta_data_240331.csv')).set_index('item_number_color')
@@ -58,7 +57,7 @@ def train_test_split(sales_df):
     test_idx = [item_id for item_id in test_idx if item_id[:-2] in text_embedding.keys()]
 
     sorted_item_ids = np.array(train_idx + test_idx)
-    np.save(os.path.join(save_dir, 'sorted_item_ids.npy'), sorted_item_ids)
+    np.save(os.path.join(save_dir, 'idx4sort.npy'), sorted_item_ids)
 
     # Text + Image + Meta
     X_train = meta_df.loc[train_idx].values
@@ -90,7 +89,7 @@ def get_nearest_neighbors(X_train, X_test):
     test_sim = cosine_similarity(X_test, X_train)
     total_sim = np.concatenate([train_sim, test_sim])
     cossim_arg = np.argsort(total_sim, axis=1)[:, ::-1]
-    np.save(os.path.join(save_dir, 'sorted_by_cossim.npy'), cossim_arg)
+    np.save(os.path.join(save_dir, 'sorted_by_cossim.npy'), cossim_arg) 
 
 def run():
     sales_df = get_item_sales_per_week()
