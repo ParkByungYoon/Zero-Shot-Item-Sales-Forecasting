@@ -1,7 +1,7 @@
 import sys
 sys.path.append('../')
 from model.waveform import *
-from dataset import ZeroShotDataset
+from dataset import KNNZeroShotDataset
 from torch.utils.data import DataLoader
 import torch
 import pandas as pd
@@ -26,6 +26,15 @@ def run(args):
     torch.cuda.manual_seed_all(args.seed)
 
     sales_df = pd.read_csv(os.path.join(args.data_dir, 'sales_week12.csv')).set_index('item_number_color')
+
+    release_date_df = pd.DataFrame(index=sales_df.index)
+    release_date = pd.to_datetime(sales_df['release_date'])
+    release_date_df['year']= release_date.apply(lambda x:x.year)
+    release_date_df['month']= release_date.apply(lambda x:x.month)
+    release_date_df['week']= release_date.apply(lambda x:x.week)
+    release_date_df['day']= release_date.apply(lambda x:x.day)
+
+    sales_df = sales_df.iloc[:,:-1]
     idx4sort = np.load(os.path.join(args.data_dir, 'idx4sort.npy'))
     sorted_by_metric = np.load(os.path.join(args.data_dir, f'sorted_by_{args.knn_metric}.npy'))
 
@@ -42,27 +51,29 @@ def run(args):
     mu_sigma_df = pd.DataFrame()
     mu_sigma_df['sales_mean'], mu_sigma_df['sales_std'] = sales_df.mean(axis=1), sales_df.std(axis=1)
 
-    train_dataset = ZeroShotDataset(
+    train_dataset = KNNZeroShotDataset(
         sales_df,
         idx4sort,
         sorted_by_metric,
         meta_df,
         mu_sigma_df,
+        release_date_df,
         image_embedding,
         text_embedding,
-        k=args.num_neighbors,
+        num_neighbors=args.num_neighbors,
         train=True
     )
 
-    test_dataset = ZeroShotDataset(
+    test_dataset = KNNZeroShotDataset(
         sales_df,
         idx4sort,
         sorted_by_metric,
         meta_df,
         mu_sigma_df,
+        release_date_df,
         image_embedding,
         text_embedding,
-        k=args.num_neighbors,
+        num_neighbors=args.num_neighbors,
         train=False
     )
 
@@ -120,7 +131,7 @@ if __name__ == '__main__':
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='KNN-Transformer')
     parser.add_argument('--knn_metric', type=str, default='eucdist')
-    parser.add_argument('--num_neighbors', type=int, default=20)
+    parser.add_argument('--num_neighbors', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
@@ -131,7 +142,7 @@ if __name__ == '__main__':
 
     # wandb arguments
     parser.add_argument('--wandb_entity', type=str, default='bonbak')
-    parser.add_argument('--wandb_proj', type=str, default='Zero-Shot-Item-Sales-Forecasting')
+    parser.add_argument('--wandb_proj', type=str, default='Zero-Shot-Item-Sales-Forecasting-Waveform')
     parser.add_argument('--wandb_dir', type=str, default='../')
 
     args = parser.parse_args()

@@ -50,21 +50,21 @@ class TimeDistributed(nn.Module):
         return y
     
 
-class StaticFeatureEncoder(nn.Module):
+class FeatureFusionNetwork(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, dropout=0.2):
-        super(StaticFeatureEncoder, self).__init__()
+        super(FeatureFusionNetwork, self).__init__()
         self.meta_linear = nn.Linear(50, embedding_dim)
-        self.batchnorm = nn.BatchNorm1d(embedding_dim*3)
+        self.batchnorm = nn.BatchNorm1d(embedding_dim*4)
         self.feature_fusion = nn.Sequential(
-            nn.Linear(embedding_dim*3, hidden_dim, bias=False),
+            nn.Linear(embedding_dim*4, hidden_dim*2, bias=False),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim)
+            nn.Linear(hidden_dim*2, hidden_dim)
         )
 
-    def forward(self, image_embedding, text_embedding, meta_data):
+    def forward(self, image_embedding, text_embedding, temporal_embedding, meta_data):
         meta_embedding = self.meta_linear(meta_data)
-        features = torch.cat([image_embedding, text_embedding, meta_embedding], dim=1)
+        features = torch.cat([image_embedding, text_embedding, temporal_embedding, meta_embedding], dim=1)
         features = self.batchnorm(features)
         features = self.feature_fusion(features)
         return features
@@ -137,3 +137,26 @@ class TransformerDecoderLayer(nn.Module):
         tgt = tgt + self.dropout3(tgt2)
         tgt = self.norm3(tgt)
         return tgt, attn_weights
+
+
+class TemporalFeatureEncoder(nn.Module):
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.day_embedding = nn.Linear(1, embedding_dim)
+        self.week_embedding = nn.Linear(1, embedding_dim)
+        self.month_embedding = nn.Linear(1, embedding_dim)
+        self.year_embedding = nn.Linear(1, embedding_dim)
+        self.fusion_layer = nn.Linear(embedding_dim*4, embedding_dim)
+        self.dropout = nn.Dropout(0.2)
+
+
+    def forward(self, temporal_features):
+        # Temporal dummy variables (day, week, month, year)
+        d, w, m, y = temporal_features[:, 0].unsqueeze(1), temporal_features[:, 1].unsqueeze(1), \
+            temporal_features[:, 2].unsqueeze(1), temporal_features[:, 3].unsqueeze(1)
+        d_emb, w_emb, m_emb, y_emb = self.day_embedding(d), self.week_embedding(w), self.month_embedding(m), self.year_embedding(y)
+        temporal_embeddings = self.fusion_layer(torch.cat([d_emb, w_emb, m_emb, y_emb], dim=1))
+        temporal_embeddings = self.dropout(temporal_embeddings)
+
+        return temporal_embeddings

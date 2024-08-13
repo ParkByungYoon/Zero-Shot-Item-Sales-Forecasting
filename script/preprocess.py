@@ -7,20 +7,24 @@ from dateutil.relativedelta import relativedelta
 from tqdm import tqdm
 
 
-data_dir = 'data/raw'
-save_dir = 'data/preprocessed'
+data_dir = '../data/raw'
+save_dir = '../data/preprocessed'
 
 def get_item_sales_per_week():
-    sales_df = pd.read_csv(os.path.join(data_dir, 'item_sale_per_week_240322.csv')).set_index('item_number_color')
+    sales_df = pd.read_csv(os.path.join(data_dir, 'item_sale_per_week_240807.csv')).set_index('item_number_color')
 
     sales_data = []
+    release_dates = []
+
     for (idx, row) in tqdm(sales_df.iterrows(), total=len(sales_df), ascii=True):
         row.index = pd.to_datetime(row.index)
         release_date = row.dropna().sort_index().index[0]
         row = row[release_date:release_date + relativedelta(weeks=11)].resample('7d').sum().fillna(0)
         sales_data.append(row.values)
+        release_dates.append(release_date)
 
     sales_df = pd.DataFrame(sales_data, index=sales_df.index)
+    sales_df['release_date'] = release_dates
     sales_df.to_csv(os.path.join(save_dir, 'sales_week12.csv'))
 
     return sales_df
@@ -33,11 +37,11 @@ def train_test_split(sales_df):
     meta_df = meta_df[meta_df.columns[meta_df.columns.str.startswith(('main_color', 'category', 'fabric'))]]
 
     # Image
-    with open(os.path.join(save_dir, 'image_embedding_fclip.pkl'), 'rb') as f:
+    with open(os.path.join(save_dir, 'fclip_image_embedding.pkl'), 'rb') as f:
         image_embedding = pickle.load(f)
 
     # Text
-    with open(os.path.join(save_dir, 'text_embedding_fclip.pickle'), 'rb') as f:
+    with open(os.path.join(save_dir, 'fclip_text_embedding.pickle'), 'rb') as f:
         text_embedding = pickle.load(f)
 
     # Train/Test Split
@@ -90,6 +94,8 @@ def get_nearest_neighbors(X_train, X_test):
     total_sim = np.concatenate([train_sim, test_sim])
     cossim_arg = np.argsort(total_sim, axis=1)[:, ::-1]
     np.save(os.path.join(save_dir, 'sorted_by_cossim.npy'), cossim_arg) 
+
+
 
 def run():
     sales_df = get_item_sales_per_week()

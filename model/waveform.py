@@ -23,7 +23,8 @@ class KNNTransformerWaveform(PytorchLightningBase):
         self.save_hyperparameters()
 
         self.item_sales_encoder = ItemSalesEncoder(hidden_dim, input_len, num_neighbors)
-        self.static_feature_encoder = StaticFeatureEncoder(embedding_dim, hidden_dim)
+        self.temporal_feature_encoder = TemporalFeatureEncoder(embedding_dim)
+        self.feature_fusion_network = FeatureFusionNetwork(embedding_dim, hidden_dim)
 
         # Decoder
         decoder_layer = TransformerDecoderLayer(d_model=self.hidden_dim, nhead=num_heads, \
@@ -34,14 +35,15 @@ class KNNTransformerWaveform(PytorchLightningBase):
             nn.Dropout(0.2)
         )
 
-    def forward(self, k_item_sales, image_embedding, text_embedding, meta_data):
+    def forward(self, k_item_sales, release_dates, image_embedding, text_embedding, meta_data):
         # Encode features and get inputs
         k_item_sales_embedding = self.item_sales_encoder(k_item_sales)
 
         # Fuse static features together
-        static_feature_fusion = self.static_feature_encoder(image_embedding, text_embedding, meta_data)
+        temporal_embedding = self.temporal_feature_encoder(release_dates)
+        fusion_embedding = self.feature_fusion_network(image_embedding, text_embedding, temporal_embedding, meta_data)
             
-        tgt = static_feature_fusion.unsqueeze(0)
+        tgt = fusion_embedding.unsqueeze(0)
         memory = k_item_sales_embedding
         decoder_out, attn_weights = self.decoder(tgt, memory)
         forecast = self.decoder_fc(decoder_out)
@@ -49,8 +51,8 @@ class KNNTransformerWaveform(PytorchLightningBase):
         return forecast.view(-1, self.output_len), attn_weights
 
     def phase_step(self, batch, phase):
-        item_sales, mu_sigma, k_item_sales, _, image_embeddings, text_embeddings, meta_data = batch
-        forecasted_sales, _ = self.forward(k_item_sales, image_embeddings, text_embeddings, meta_data)
+        item_sales, mu_sigma, k_item_sales, _, release_dates, image_embeddings, text_embeddings, meta_data = batch
+        forecasted_sales, _ = self.forward(k_item_sales, release_dates, image_embeddings, text_embeddings, meta_data)
         
         loss = F.mse_loss(item_sales, forecasted_sales.squeeze())
         adjusted_smape, r2_score = self.get_score(item_sales, forecasted_sales)

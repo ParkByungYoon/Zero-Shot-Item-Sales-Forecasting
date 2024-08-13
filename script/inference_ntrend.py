@@ -10,7 +10,6 @@ import pandas as pd
 import pickle
 import argparse
 import numpy as np
-from tqdm import tqdm
 import random
 import urllib3
 
@@ -34,7 +33,11 @@ def run(args):
 
     sales_df = sales_df.iloc[:,:-1]
     idx4sort = np.load(os.path.join(args.data_dir, 'idx4sort.npy'))
-    sorted_by_metric = np.load(os.path.join(args.data_dir, f'sorted_by_{args.knn_metric}.npy'))
+
+    # Naver Trend
+    category_df = pd.read_csv(os.path.join(args.data_dir, 'category.csv'), index_col=0).fillna(0)
+    color_df = pd.read_csv(os.path.join(args.data_dir, 'color.csv'), index_col=0).fillna(0)
+    fabric_df = pd.read_csv(os.path.join(args.data_dir, 'fabric.csv'), index_col=0).fillna(0)
 
     # Image
     with open(os.path.join(args.data_dir, 'image_embedding_fclip.pkl'), 'rb') as f:
@@ -49,29 +52,31 @@ def run(args):
     mu_sigma_df = pd.DataFrame()
     mu_sigma_df['sales_mean'], mu_sigma_df['sales_std'] = sales_df.mean(axis=1), sales_df.std(axis=1)
 
-    train_dataset = KNNZeroShotDataset(
+    train_dataset = NTrendZeroShotDataset(
         sales_df,
         idx4sort,
-        sorted_by_metric,
+        category_df,
+        color_df,
+        fabric_df,
         meta_df,
         mu_sigma_df,
         release_date_df,
         image_embedding,
         text_embedding,
-        num_neighbors=args.num_neighbors,
         train=True
     )
 
-    test_dataset = KNNZeroShotDataset(
+    test_dataset = NTrendZeroShotDataset(
         sales_df,
         idx4sort,
-        sorted_by_metric,
+        category_df,
+        color_df,
+        fabric_df,
         meta_df,
         mu_sigma_df,
         release_date_df,
         image_embedding,
         text_embedding,
-        num_neighbors=args.num_neighbors,
         train=False
     )
 
@@ -88,7 +93,7 @@ def run(args):
         num_layers=args.num_layers,
         lr=0.0001
     )
-    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'K{args.num_neighbors}-{args.knn_metric}.ckpt'))['state_dict'], strict=False)
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/ntrend.ckpt'))['state_dict'], strict=False)
 
     model.eval()
     with torch.no_grad():
@@ -98,6 +103,8 @@ def run(args):
             adjusted_smape, r2_score = model.get_score(item_sales, forecasted_sales_train)
         print('train:',adjusted_smape, r2_score)
 
+    model.eval()
+    with torch.no_grad():
         for batch in test_loader:
             item_sales, mu_sigma, k_item_sales, _, release_dates, image_embeddings, text_embeddings, meta_data = batch
             forecasted_sales_test, _ = model(k_item_sales, release_dates, image_embeddings, text_embeddings, meta_data)
@@ -107,25 +114,25 @@ def run(args):
         forecasted_sales = torch.cat([forecasted_sales_train, forecasted_sales_test], dim=0)
     df_index = train_dataset.item_ids.tolist()+test_dataset.item_ids.tolist()
     df = pd.DataFrame(index=df_index, data=forecasted_sales)
-    df.to_csv(os.path.join(args.result_dir, f'result_K{args.num_neighbors}-{args.knn_metric}.csv'))
+    df.to_csv(os.path.join(args.result_dir, f'result_ntrend.csv'))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Zero-Shot-Item-Sales-Forecasting')
     # General arguments
     parser.add_argument('--data_dir', type=str, default='../data/preprocessed')
-    parser.add_argument('--ckpt_dir', type=str, default='../log/KNN-Transformer')
+    parser.add_argument('--ckpt_dir', type=str, default='../log')
     parser.add_argument('--result_dir', type=str, default='../output')
     parser.add_argument('--seed', type=int, default=21)
     parser.add_argument('--gpu_num', type=int, default=1)
 
     # Model specific arguments
-    parser.add_argument('--model_type', type=str, default='KNN-Transformer')
+    parser.add_argument('--model_type', type=str, default='ANTM-Transformer')
     parser.add_argument('--knn_metric', type=str, default='eucdist')
-    parser.add_argument('--num_neighbors', type=int, default=10)
+    parser.add_argument('--num_neighbors', type=int, default=3)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
-    parser.add_argument('--input_len', type=int, default=12)
+    parser.add_argument('--input_len', type=int, default=52)
     parser.add_argument('--output_len', type=int, default=12)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--num_layers', type=int, default=2)
