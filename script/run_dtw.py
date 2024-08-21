@@ -38,8 +38,6 @@ def run(args):
 
     total_ids = np.load(os.path.join(args.data_dir, 'total_ids.npy'))
     dtw_matrix = np.load(os.path.join(args.data_dir, f'total_dtw_dist.npy'))
-    num_valid = 2112
-    num_test = 1118
     # Image
     with open(os.path.join(args.data_dir, 'fclip_image_embedding.pickle'), 'rb') as f:
         image_embedding = pickle.load(f)
@@ -50,7 +48,7 @@ def run(args):
     meta_df = pd.read_csv(os.path.join(args.data_dir, 'meta_data.csv')).set_index('item_number_color')
     
     train_dataset = DTWSamplingDataset(
-        dtw_matrix[:-num_valid-num_test],
+        dtw_matrix,
         total_ids,
         meta_df,
         release_date_df,
@@ -60,7 +58,7 @@ def run(args):
         mode='train'
     )  
     valid_dataset = DTWSamplingDataset(
-        dtw_matrix[-num_valid-num_test:-num_test],
+        dtw_matrix,
         total_ids,
         meta_df,
         release_date_df,
@@ -73,7 +71,7 @@ def run(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWDotProduct( 
+    model = DTWConcatenate( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
@@ -91,7 +89,7 @@ def run(args):
     wandb.init(
         entity=args.wandb_entity, 
         project=args.wandb_proj, 
-        name=f'{args.model_type}-{args.model_name}',
+        name=f'{args.model_name}',
         dir=args.wandb_dir
     )
     wandb_logger = pl_loggers.WandbLogger()
@@ -118,7 +116,7 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--model_name', type=str, default='dot-product')
+    parser.add_argument('--model_name', type=str, default='concatenate')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)

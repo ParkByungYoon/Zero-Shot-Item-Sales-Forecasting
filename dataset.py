@@ -178,14 +178,19 @@ class DTWSamplingDataset(Dataset):
         self.release_date_df = release_date_df
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
-        self.num_samples = num_samples if mode in ['train', 'valid'] else dtw_matrix.shape[1]-1
+        self.num_samples = num_samples if mode in ['train', 'valid'] else self.num_train-1
         self.mode = mode        
+
+        self.num_train = 8251
+        self.num_valid = 2112
+        self.num_test = 1118
+
         if self.mode == 'train':
             self.start_idx = 0
         elif self.mode == 'valid':
-            self.start_idx = 8251
+            self.start_idx = self.num_train
         else:
-            self.start_idx = 8251+2112
+            self.start_idx = self.num_train+self.num_valid
             
         self.__preprocess__()
     
@@ -213,11 +218,9 @@ class DTWSamplingDataset(Dataset):
         center_idx = self.start_idx + (idx//self.num_samples)
 
         if self.mode != 'test':
-            neighbor_idx = random.choice(list(set(range(0,self.dtw_matrix.shape[1]))-set([center_idx]))) 
+            neighbor_idx = random.choice(list(set(range(0,self.num_train))-set([center_idx]))) 
         else: 
             neighbor_idx = idx%self.num_samples
-            if neighbor_idx>=center_idx: 
-                neighbor_idx+=1
 
         center_item = \
             self.image_embeddings[center_idx],\
@@ -231,8 +234,14 @@ class DTWSamplingDataset(Dataset):
             self.meta_data[neighbor_idx],\
             self.release_dates[neighbor_idx]
             
-        dtw = self.dtw_matrix[center_idx - self.start_idx][neighbor_idx]
+        dtw = self.dtw_matrix[center_idx][neighbor_idx]
         return dtw, center_item, neighbor_item
     
     def __len__(self):
-        return self.num_samples * self.dtw_matrix.shape[0]
+        if self.mode == 'train':
+            num_data = self.num_train
+        elif self.mode == 'valid':
+            num_data = self.num_valid
+        else:
+            num_data = self.num_test
+        return self.num_samples * num_data

@@ -53,7 +53,7 @@ def run(args):
     meta_df = pd.read_csv(os.path.join(args.data_dir, 'meta_data.csv')).set_index('item_number_color')
     
     test_dataset = DTWSamplingDataset(
-        dtw_matrix[-1118:],
+        dtw_matrix,
         total_ids,
         meta_df,
         release_date_df,
@@ -65,12 +65,12 @@ def run(args):
 
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWPredictor( 
+    model = DTWDotProduct( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
     )
-    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw.ckpt'))['state_dict'], strict=False)
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dot-product.ckpt'))['state_dict'], strict=False)
 
     model.eval()
     test_losses = []
