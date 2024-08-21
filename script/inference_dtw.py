@@ -21,6 +21,9 @@ torch.autograd.set_detect_anomaly(True)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+def hit_rate(y_true, y_pred, k):
+    return len(np.intersect1d(y_true[:k], y_pred[:k])) / k
+
 def run(args):
     print(args)
     random.seed(args.seed)
@@ -60,25 +63,38 @@ def run(args):
         mode='test'
     ) 
 
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=8)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWPredictor( 
+    model = DTWDotProduct( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
     )
-    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw-v2.ckpt'))['state_dict'], strict=False)
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw-dot-product.ckpt'))['state_dict'], strict=False)
 
     model.eval()
     test_losses = []
+    hit_rates_at_10 = []
+    hit_rates_at_50 = []
+    hit_rates_at_100 = []
     with torch.no_grad():
         for batch in tqdm(test_loader):
             dtw, center_items, neighbor_items = batch
-            dtw = torch.nan_to_num(dtw)
             prediction = model(center_items, neighbor_items)
             test_loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
             test_losses.append(test_loss.item())
-    print(np.mean(test_losses))
+            
+            y_true = torch.topk(dtw, args.topk, largest=False).indices
+            y_pred = torch.topk(prediction.squeeze(), args.topk, largest=False).indices
+
+            hit_rates_at_10.append(hit_rate(y_true, y_pred, 10))
+            hit_rates_at_50.append(hit_rate(y_true, y_pred, 50))
+            hit_rates_at_100.append(hit_rate(y_true, y_pred, 100))
+
+    print('MSE:',np.mean(test_losses))
+    print('hit@10:',np.mean(hit_rates_at_10))
+    print('hit@50:',np.mean(hit_rates_at_50))
+    print('hit@100',np.mean(hit_rates_at_100))
 
 
 if __name__ == '__main__':
@@ -92,9 +108,10 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--batch_size', type=int, default=8250)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
+    parser.add_argument('--topk', type=int, default=100)
 
     # wandb arguments
     parser.add_argument('--wandb_entity', type=str, default='bonbak')

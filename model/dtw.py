@@ -29,11 +29,16 @@ class DTWPredictor(PytorchLightningBase):
         )
 
     def forward(self, center_items, neighbor_items):
-        temporal_embedding = self.temporal_feature_encoder(center_items[3])
-        center_item_embedding = self.feature_fusion_network(center_items[0], center_items[1], temporal_embedding, center_items[2])
-        neighbor_item_embedding = self.feature_fusion_network(neighbor_items[0], neighbor_items[1], temporal_embedding, neighbor_items[2])
-        concatenated = torch.cat([center_item_embedding, neighbor_item_embedding], dim=-1)
-        return self.final_layer(concatenated)
+        c_image, c_text, c_meta, c_date = center_items
+        n_image, n_text, n_meta, n_date = neighbor_items
+
+        c_temp = self.temporal_feature_encoder(c_date)
+        c_item_embedding = self.feature_fusion_network(c_image, c_text, c_temp, c_meta)
+
+        n_temp = self.temporal_feature_encoder(n_date)
+        n_item_embedding = self.feature_fusion_network(n_image, n_text, n_temp, n_meta)
+        
+        return self.final_layer(torch.cat([c_item_embedding, n_item_embedding], dim=-1))
 
     def phase_step(self, batch, phase):
         dtw, center_items, neighbor_items = batch
@@ -47,7 +52,12 @@ class DTWDotProduct(DTWPredictor):
         super().__init__(*args, **kwargs)
 
     def forward(self, center_items, neighbor_items):
-        temporal_embedding = self.temporal_feature_encoder(center_items[3])
-        center_item_embedding = self.feature_fusion_network(center_items[0], center_items[1], temporal_embedding, center_items[2])
-        neighbor_item_embedding = self.feature_fusion_network(neighbor_items[0], neighbor_items[1], temporal_embedding, neighbor_items[2])
-        return torch.bmm(center_item_embedding.unsqueeze(1), neighbor_item_embedding.unsqueeze(-1))
+        c_image, c_text, c_meta, c_date = center_items
+        n_image, n_text, n_meta, n_date = neighbor_items
+
+        c_temp = self.temporal_feature_encoder(c_date)
+        c_item_embedding = self.feature_fusion_network(c_image, c_text, c_temp, c_meta).unsqueeze(1)
+
+        n_temp = self.temporal_feature_encoder(n_date)
+        n_item_embedding = self.feature_fusion_network(n_image, n_text, n_temp, n_meta).unsqueeze(-1)
+        return torch.bmm(c_item_embedding, n_item_embedding)

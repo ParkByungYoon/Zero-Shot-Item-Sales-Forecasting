@@ -93,9 +93,7 @@ class InversedItemSalesEncoder(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
     def forward(self, input):
-
         input = input.permute(0,2,1)
-
         if input.dim() <= 2: input = input.unsqueeze(dim=-1)
         emb = self.input_linear(input)
         emb = self.encoder(emb)

@@ -178,7 +178,7 @@ class DTWSamplingDataset(Dataset):
         self.release_date_df = release_date_df
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
-        self.num_samples = num_samples if mode in ['train', 'valid'] else len(dtw_matrix)-1
+        self.num_samples = num_samples if mode in ['train', 'valid'] else dtw_matrix.shape[1]-1
         self.mode = mode        
         self.start_idx = 0 if self.mode == 'train' else len(dtw_matrix)
             

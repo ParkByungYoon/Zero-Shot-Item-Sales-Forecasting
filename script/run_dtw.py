@@ -73,7 +73,7 @@ def run(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWDotProduct( 
+    model = DTWPredictor( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--model_name', type=str, default='dtw-dot-product')
+    parser.add_argument('--model_name', type=str, default='dtw')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
