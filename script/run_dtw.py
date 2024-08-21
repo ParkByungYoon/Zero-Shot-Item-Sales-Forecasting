@@ -73,7 +73,7 @@ def run(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
     valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWPredictor( 
+    model = DTWDotProduct( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
@@ -91,7 +91,7 @@ def run(args):
     wandb.init(
         entity=args.wandb_entity, 
         project=args.wandb_proj, 
-        name=f'{args.model_type}',
+        name=f'{args.model_type}-{args.model_name}',
         dir=args.wandb_dir
     )
     wandb_logger = pl_loggers.WandbLogger()
@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--model_name', type=str, default='dtw')
+    parser.add_argument('--model_name', type=str, default='dot-product')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)

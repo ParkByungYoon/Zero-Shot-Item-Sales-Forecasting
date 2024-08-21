@@ -28,6 +28,18 @@ class DTWPredictor(PytorchLightningBase):
             nn.Linear(hidden_dim, 1),
         )
 
+    def phase_step(self, batch, phase):
+        dtw, center_items, neighbor_items = batch
+        prediction = self.forward(center_items, neighbor_items)
+        loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
+        self.log(f'{phase}_loss', loss)
+        return loss    
+
+
+class DTWConcatenate(DTWPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def forward(self, center_items, neighbor_items):
         c_image, c_text, c_meta, c_date = center_items
         n_image, n_text, n_meta, n_date = neighbor_items
@@ -40,12 +52,6 @@ class DTWPredictor(PytorchLightningBase):
         
         return self.final_layer(torch.cat([c_item_embedding, n_item_embedding], dim=-1))
 
-    def phase_step(self, batch, phase):
-        dtw, center_items, neighbor_items = batch
-        prediction = self.forward(center_items, neighbor_items)
-        loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
-        self.log(f'{phase}_loss', loss)
-        return loss
 
 class DTWDotProduct(DTWPredictor):
     def __init__(self, *args, **kwargs):

@@ -180,7 +180,12 @@ class DTWSamplingDataset(Dataset):
         self.text_embedding = text_embedding
         self.num_samples = num_samples if mode in ['train', 'valid'] else dtw_matrix.shape[1]-1
         self.mode = mode        
-        self.start_idx = 0 if self.mode == 'train' else len(dtw_matrix)
+        if self.mode == 'train':
+            self.start_idx = 0
+        elif self.mode == 'valid':
+            self.start_idx = 8251
+        else:
+            self.start_idx = 8251+2112
             
         self.__preprocess__()
     

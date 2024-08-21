@@ -65,12 +65,12 @@ def run(args):
 
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWDotProduct( 
+    model = DTWPredictor( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
     )
-    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw-dot-product.ckpt'))['state_dict'], strict=False)
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw.ckpt'))['state_dict'], strict=False)
 
     model.eval()
     test_losses = []
