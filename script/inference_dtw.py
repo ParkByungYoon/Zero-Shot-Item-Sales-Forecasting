@@ -14,6 +14,7 @@ import random
 
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
+from tqdm import tqdm
 import urllib3
 
 torch.autograd.set_detect_anomaly(True)
@@ -38,8 +39,7 @@ def run(args):
 
     total_ids = np.load(os.path.join(args.data_dir, 'total_ids.npy'))
     dtw_matrix = np.load(os.path.join(args.data_dir, f'total_dtw_dist.npy'))
-    num_valid = 2112
-    num_test = 1118
+
     # Image
     with open(os.path.join(args.data_dir, 'fclip_image_embedding.pickle'), 'rb') as f:
         image_embedding = pickle.load(f)
@@ -49,76 +49,49 @@ def run(args):
     # Meta
     meta_df = pd.read_csv(os.path.join(args.data_dir, 'meta_data.csv')).set_index('item_number_color')
     
-    train_dataset = DTWSamplingDataset(
-        dtw_matrix[:-num_valid-num_test],
+    test_dataset = DTWSamplingDataset(
+        dtw_matrix[-1118:],
         total_ids,
         meta_df,
         release_date_df,
         image_embedding,
         text_embedding,
-        num_samples=10, 
-        mode='train'
-    )  
-    valid_dataset = DTWSamplingDataset(
-        dtw_matrix[-num_valid-num_test:-num_test],
-        total_ids,
-        meta_df,
-        release_date_df,
-        image_embedding,
-        text_embedding,
-        num_samples=10, 
-        mode='valid'
-    )  
+        num_samples=-1, 
+        mode='test'
+    ) 
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8)
-    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=8)
 
-    model = DTWDotProduct( 
+    model = DTWPredictor( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
     )
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dtw-v2.ckpt'))['state_dict'], strict=False)
 
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath=f'{args.log_dir}/{args.model_type}',
-        filename=f'{args.model_name}',
-        monitor='valid_loss',
-        mode='min',
-        save_top_k=1
-    )
-
-    wandb.require("core")
-    wandb.init(
-        entity=args.wandb_entity, 
-        project=args.wandb_proj, 
-        name=f'{args.model_type}',
-        dir=args.wandb_dir
-    )
-    wandb_logger = pl_loggers.WandbLogger()
-    trainer = pl.Trainer(
-        devices=[args.gpu_num],
-        max_epochs=args.num_epochs,
-        check_val_every_n_epoch=1,
-        logger=wandb_logger,
-        callbacks=[checkpoint_callback]
-    )
-    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=valid_loader)
-
-    print(checkpoint_callback.best_model_path)
+    model.eval()
+    test_losses = []
+    with torch.no_grad():
+        for batch in tqdm(test_loader):
+            dtw, center_items, neighbor_items = batch
+            dtw = torch.nan_to_num(dtw)
+            prediction = model(center_items, neighbor_items)
+            test_loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
+            test_losses.append(test_loss.item())
+    print(np.mean(test_losses))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Zero-Shot-Item-Sales-Forecasting')
     # General arguments
     parser.add_argument('--data_dir', type=str, default='../data/preprocessed')
-    parser.add_argument('--log_dir', type=str, default='../log')
+    parser.add_argument('--ckpt_dir', type=str, default='../log')
+    parser.add_argument('--result_dir', type=str, default='../output')
     parser.add_argument('--seed', type=int, default=21)
-    parser.add_argument('--num_epochs', type=int, default=200)
     parser.add_argument('--gpu_num', type=int, default=1)
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--model_name', type=str, default='dtw-dot-product')
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)

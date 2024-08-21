@@ -1,3 +1,4 @@
+import random
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -163,23 +164,24 @@ class NTrendZeroShotDataset(Dataset):
 class DTWSamplingDataset(Dataset):
     def __init__(self,
                  dtw_matrix,
-                 sorted_item_ids,
+                 item_ids,
                  meta_df,
                  release_date_df,
                  image_embedding,
                  text_embedding,
-                 num_neighbors=10, 
-                 train=True):    
-        
-        self.sorted_item_ids = sorted_item_ids
+                 num_samples=10,
+                 mode='train'):    
+
+        self.dtw_matrix = torch.FloatTensor(dtw_matrix)
+        self.item_ids = item_ids
         self.meta_df = meta_df
         self.release_date_df = release_date_df
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
-        self.num_neighbors = num_neighbors
-        self.item_ids = self.sorted_item_ids[:-2118] if train else self.sorted_item_ids[-2118:]
-        self.dtw_matrix = dtw_matrix[0] if train else dtw_matrix[-2118:,0].squeeze()
-
+        self.num_samples = num_samples if mode in ['train', 'valid'] else len(dtw_matrix)-1
+        self.mode = mode        
+        self.start_idx = 0 if self.mode == 'train' else len(dtw_matrix)
+            
         self.__preprocess__()
     
     def __preprocess__(self):
@@ -203,20 +205,29 @@ class DTWSamplingDataset(Dataset):
         self.meta_data = torch.FloatTensor(meta_data)
 
     def __getitem__(self, idx):
+        center_idx = self.start_idx + (idx//self.num_samples)
+
+        if self.mode != 'test':
+            neighbor_idx = random.choice(list(set(range(0,self.dtw_matrix.shape[1]))-set([center_idx]))) 
+        else: 
+            neighbor_idx = idx%self.num_samples
+            if neighbor_idx>=center_idx: 
+                neighbor_idx+=1
+
         center_item = \
-            self.image_embeddings[0],\
-            self.text_embeddings[0],\
-            self.meta_data[0],\
-            self.release_dates[0],
+            self.image_embeddings[center_idx],\
+            self.text_embeddings[center_idx],\
+            self.meta_data[center_idx],\
+            self.release_dates[center_idx],
     
         neighbor_item = \
-            self.image_embeddings[idx+1],\
-            self.text_embeddings[idx+1],\
-            self.meta_data[idx+1],\
-            self.release_dates[idx+1]
+            self.image_embeddings[neighbor_idx],\
+            self.text_embeddings[neighbor_idx],\
+            self.meta_data[neighbor_idx],\
+            self.release_dates[neighbor_idx]
             
-        dtw = self.dtw_matrix[idx+1]
+        dtw = self.dtw_matrix[center_idx - self.start_idx][neighbor_idx]
         return dtw, center_item, neighbor_item
     
     def __len__(self):
-        return len(self.item_ids) - 1
+        return self.num_samples * self.dtw_matrix.shape[0]

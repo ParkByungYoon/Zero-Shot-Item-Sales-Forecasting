@@ -29,7 +29,6 @@ class DTWPredictor(PytorchLightningBase):
         )
 
     def forward(self, center_items, neighbor_items):
-        # Fuse static features together
         temporal_embedding = self.temporal_feature_encoder(center_items[3])
         center_item_embedding = self.feature_fusion_network(center_items[0], center_items[1], temporal_embedding, center_items[2])
         neighbor_item_embedding = self.feature_fusion_network(neighbor_items[0], neighbor_items[1], temporal_embedding, neighbor_items[2])
@@ -39,5 +38,16 @@ class DTWPredictor(PytorchLightningBase):
     def phase_step(self, batch, phase):
         dtw, center_items, neighbor_items = batch
         prediction = self.forward(center_items, neighbor_items)
-        loss = F.mse_loss(dtw, prediction)
+        loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
         self.log(f'{phase}_loss', loss)
+        return loss
+
+class DTWDotProduct(DTWPredictor):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, center_items, neighbor_items):
+        temporal_embedding = self.temporal_feature_encoder(center_items[3])
+        center_item_embedding = self.feature_fusion_network(center_items[0], center_items[1], temporal_embedding, center_items[2])
+        neighbor_item_embedding = self.feature_fusion_network(neighbor_items[0], neighbor_items[1], temporal_embedding, neighbor_items[2])
+        return torch.bmm(center_item_embedding.unsqueeze(1), neighbor_item_embedding.unsqueeze(-1))
