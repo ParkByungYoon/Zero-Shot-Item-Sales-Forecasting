@@ -178,12 +178,11 @@ class DTWSamplingDataset(Dataset):
         self.release_date_df = release_date_df
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
-        self.num_samples = num_samples if mode in ['train', 'valid'] else self.num_train-1
-        self.mode = mode        
-
         self.num_train = 8251
         self.num_valid = 2112
         self.num_test = 1118
+        self.num_samples = num_samples if mode in ['train', 'valid'] else self.num_train-1
+        self.mode = mode        
 
         if self.mode == 'train':
             self.start_idx = 0
