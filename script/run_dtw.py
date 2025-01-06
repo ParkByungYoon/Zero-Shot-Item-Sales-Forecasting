@@ -37,7 +37,7 @@ def run(args):
     release_date_df['day']= release_date.apply(lambda x:x.day)
 
     total_ids = np.load(os.path.join(args.data_dir, 'total_ids.npy'))
-    dtw_matrix = np.load(os.path.join(args.data_dir, f'total_dtw_dist.npy'))
+    dtw_matrix = np.load(os.path.join(args.data_dir, 'total_dtw_dist.npy'))
     # Image
     with open(os.path.join(args.data_dir, 'fclip_image_embedding.pickle'), 'rb') as f:
         image_embedding = pickle.load(f)

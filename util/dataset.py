@@ -4,10 +4,11 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
 
+
 class KNNZeroShotDataset(Dataset):
     def __init__(self,
                  sales_df,
-                 sorted_item_ids,
+                 total_ids,
                  sorted_by_metric,
                  meta_df,
                  mu_sigma_df,
@@ -15,10 +16,10 @@ class KNNZeroShotDataset(Dataset):
                  image_embedding,
                  text_embedding,
                  num_neighbors=10, 
-                 train=True):
+                 mode='train'):
         
         self.sales_df = sales_df
-        self.sorted_item_ids = sorted_item_ids
+        self.total_ids = total_ids
         self.sorted_by_metric = sorted_by_metric
         self.meta_df = meta_df
         self.mu_sigma_df = mu_sigma_df
@@ -26,7 +27,16 @@ class KNNZeroShotDataset(Dataset):
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
         self.num_neighbors = num_neighbors
-        self.item_ids = self.sorted_item_ids[:-2118] if train else self.sorted_item_ids[-2118:]
+        self.num_train = 8251
+        self.num_valid = 2112
+        self.num_test = 1118
+
+        if mode == 'train':
+            self.item_ids = self.total_ids[:self.num_train]
+        elif mode == 'valid':
+            self.item_ids = self.total_ids[self.num_train:self.num_train+self.num_valid]
+        else:
+            self.item_ids = self.total_ids[-self.num_test:]
 
         self.__preprocess__()
     
@@ -39,9 +49,9 @@ class KNNZeroShotDataset(Dataset):
             mu_sigma = self.mu_sigma_df.loc[item_id].values
             sales = ((self.sales_df.loc[item_id]-mu_sigma[0]) / mu_sigma[1]).values            
             
-            target_idx = np.where(self.sorted_item_ids == item_id)[0][0]
+            target_idx = np.where(self.total_ids == item_id)[0][0]
             k_nearest_idx = self.sorted_by_metric[target_idx][:self.num_neighbors]
-            k_nearest_item_ids = self.sorted_item_ids[k_nearest_idx]
+            k_nearest_item_ids = self.total_ids[k_nearest_idx]
 
             k_mu_sigma = self.mu_sigma_df.loc[k_nearest_item_ids].values
             k_sales = ((self.sales_df.loc[k_nearest_item_ids].values - k_mu_sigma[:,0:1]) / k_mu_sigma[:,1:])
@@ -88,7 +98,7 @@ class KNNZeroShotDataset(Dataset):
 class NTrendZeroShotDataset(Dataset):
     def __init__(self,
                  sales_df,
-                 sorted_item_ids,
+                 total_ids,
                  category_df,
                  color_df,
                  fabric_df,
@@ -100,7 +110,7 @@ class NTrendZeroShotDataset(Dataset):
                  train=True):
 
         self.sales_df = sales_df
-        self.sorted_item_ids = sorted_item_ids
+        self.total_ids = total_ids
         self.category_df = category_df
         self.color_df = color_df
         self.fabric_df = fabric_df
@@ -109,7 +119,7 @@ class NTrendZeroShotDataset(Dataset):
         self.release_date_df = release_date_df
         self.image_embedding = image_embedding
         self.text_embedding = text_embedding
-        self.item_ids = self.sorted_item_ids[:-2118] if train else self.sorted_item_ids[-2118:]
+        self.item_ids = self.total_ids[:-2118] if train else self.total_ids[-2118:]
 
         self.__preprocess__()
     
@@ -181,12 +191,12 @@ class DTWSamplingDataset(Dataset):
         self.num_train = 8251
         self.num_valid = 2112
         self.num_test = 1118
-        self.num_samples = num_samples if mode in ['train', 'valid'] else self.num_train-1
+        self.num_samples = num_samples if mode in ['train', 'valid'] else self.num_train
         self.mode = mode        
 
-        if self.mode == 'train':
+        if 'train' in self.mode:
             self.start_idx = 0
-        elif self.mode == 'valid':
+        elif 'valid' in self.mode:
             self.start_idx = self.num_train
         else:
             self.start_idx = self.num_train+self.num_valid
@@ -216,7 +226,7 @@ class DTWSamplingDataset(Dataset):
     def __getitem__(self, idx):
         center_idx = self.start_idx + (idx//self.num_samples)
 
-        if self.mode != 'test':
+        if self.mode in ['train', 'valid']:
             neighbor_idx = random.choice(list(set(range(0,self.num_train))-set([center_idx]))) 
         else: 
             neighbor_idx = idx%self.num_samples
@@ -235,11 +245,11 @@ class DTWSamplingDataset(Dataset):
             
         dtw = self.dtw_matrix[center_idx][neighbor_idx]
         return dtw, center_item, neighbor_item
-    
+
     def __len__(self):
-        if self.mode == 'train':
+        if 'train' in self.mode:
             num_data = self.num_train
-        elif self.mode == 'valid':
+        elif 'valid' in self.mode:
             num_data = self.num_valid
         else:
             num_data = self.num_test

@@ -24,6 +24,53 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 def hit_rate(y_true, y_pred, k):
     return len(np.intersect1d(y_true[:k], y_pred[:k])) / k
 
+def inference(model, data_loader):
+    device = next(model.parameters()).device
+    dtw_prediction = []
+    sorted_by_pred_dtw = []
+    mse_losses = []
+
+    hit_rates_at_10 = []
+    hit_rates_at_50 = []
+    hit_rates_at_100 = []
+
+    model.eval()
+    with torch.no_grad():
+        for batch in tqdm(data_loader):
+            dtw, center_items, neighbor_items = batch
+            inf_idx = dtw.isinf().clone()
+            dtw = dtw.to(device)
+            center_items = [c[~inf_idx].to(device) for c in center_items]
+            neighbor_items = [n[~inf_idx].to(device) for n in neighbor_items]
+
+            pred = model(center_items, neighbor_items).squeeze()
+            prediction = torch.full_like(dtw, float('inf'))
+            prediction[~inf_idx] = pred
+
+            y_true = torch.argsort(dtw).detach().cpu()
+            y_pred = torch.argsort(prediction).detach().cpu()
+            
+            mse_loss = F.mse_loss(dtw, prediction)
+            if ~torch.isnan(mse_loss):
+                mse_losses.append(mse_loss.item())
+            
+            hit_rates_at_10.append(hit_rate(y_true, y_pred, 10))
+            hit_rates_at_50.append(hit_rate(y_true, y_pred, 50))
+            hit_rates_at_100.append(hit_rate(y_true, y_pred, 100))
+            
+            dtw_prediction.append(prediction.unsqueeze(0))
+            sorted_by_pred_dtw.append(y_pred.unsqueeze(0))
+
+    print('MSE:',np.mean(mse_losses))
+    print('hit@10:',np.mean(hit_rates_at_10))
+    print('hit@50:',np.mean(hit_rates_at_50))
+    print('hit@100',np.mean(hit_rates_at_100))
+
+    dtw_prediction = torch.cat(dtw_prediction, dim=0).detach().cpu()
+    sorted_by_pred_dtw = torch.cat(sorted_by_pred_dtw, dim=0)
+
+    return dtw_prediction, sorted_by_pred_dtw
+
 def run(args):
     print(args)
     random.seed(args.seed)
@@ -52,49 +99,43 @@ def run(args):
     # Meta
     meta_df = pd.read_csv(os.path.join(args.data_dir, 'meta_data.csv')).set_index('item_number_color')
     
-    test_dataset = DTWSamplingDataset(
-        dtw_matrix,
-        total_ids,
-        meta_df,
-        release_date_df,
-        image_embedding,
-        text_embedding,
-        num_samples=-1, 
-        mode='test'
-    ) 
+    train_dataset, valid_dataset, test_dataset = [
+        DTWSamplingDataset(
+            dtw_matrix,
+            total_ids,
+            meta_df,
+            release_date_df,
+            image_embedding,
+            text_embedding,
+            num_samples=-1, 
+            mode=f'{phase}'
+        ) for phase in ['train_inf', 'valid_inf', 'test_inf']
+    ]
 
+    print(len(train_dataset), len(valid_dataset), len(test_dataset))
+    print(len(train_dataset)//8251, len(valid_dataset)//2112, len(test_dataset)//1118)
+
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
+    valid_loader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=8)
 
-    model = DTWDotProduct( 
+    model = DTWConcatenate( 
         embedding_dim=512,
         hidden_dim=512,
         lr=0.0001
     )
-    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/dot-product.ckpt'))['state_dict'], strict=False)
+    model.load_state_dict(torch.load(os.path.join(args.ckpt_dir, f'{args.model_type}/{args.model_name}.ckpt'))['state_dict'], strict=False)
+    model.to(f'cuda:{args.gpu_num}')
 
-    model.eval()
-    test_losses = []
-    hit_rates_at_10 = []
-    hit_rates_at_50 = []
-    hit_rates_at_100 = []
-    with torch.no_grad():
-        for batch in tqdm(test_loader):
-            dtw, center_items, neighbor_items = batch
-            prediction = model(center_items, neighbor_items)
-            test_loss = F.mse_loss(dtw.squeeze(), prediction.squeeze())
-            test_losses.append(test_loss.item())
-            
-            y_true = torch.topk(dtw, args.topk, largest=False).indices
-            y_pred = torch.topk(prediction.squeeze(), args.topk, largest=False).indices
+    train_dtw_prediction, train_sorted_by_pred_dtw = inference(model, train_loader)
+    valid_dtw_prediction, valid_sorted_by_pred_dtw = inference(model, valid_loader)
+    test_dtw_prediction, test_sorted_by_pred_dtw = inference(model, test_loader)
 
-            hit_rates_at_10.append(hit_rate(y_true, y_pred, 10))
-            hit_rates_at_50.append(hit_rate(y_true, y_pred, 50))
-            hit_rates_at_100.append(hit_rate(y_true, y_pred, 100))
+    dtw_prediction = torch.cat([train_dtw_prediction, valid_dtw_prediction, test_dtw_prediction], dim=0)
+    sorted_by_pred_dtw = torch.cat([train_sorted_by_pred_dtw, valid_sorted_by_pred_dtw, test_sorted_by_pred_dtw], dim=0)
 
-    print('MSE:',np.mean(test_losses))
-    print('hit@10:',np.mean(hit_rates_at_10))
-    print('hit@50:',np.mean(hit_rates_at_50))
-    print('hit@100',np.mean(hit_rates_at_100))
+    np.save(os.path.join(args.data_dir, f'pred_dtw_{args.model_name}.npy'), np.array(dtw_prediction))
+    np.save(os.path.join(args.data_dir, f'sorted_by_pred_dtw_{args.model_name}.npy'), np.int64(np.array(sorted_by_pred_dtw)))
 
 
 if __name__ == '__main__':
@@ -104,11 +145,12 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt_dir', type=str, default='../log')
     parser.add_argument('--result_dir', type=str, default='../output')
     parser.add_argument('--seed', type=int, default=21)
-    parser.add_argument('--gpu_num', type=int, default=1)
+    parser.add_argument('--gpu_num', type=int, default=2)
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='DTW-Predictor')
-    parser.add_argument('--batch_size', type=int, default=8250)
+    parser.add_argument('--model_name', type=str, default='concatenate')
+    parser.add_argument('--batch_size', type=int, default=8251)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--topk', type=int, default=100)

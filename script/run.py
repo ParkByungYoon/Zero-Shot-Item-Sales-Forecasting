@@ -5,14 +5,16 @@ from model.gtm import *
 import torch
 import argparse
 import numpy as np
+import wandb
 import random
 from util.datamodule import ZeroShotDataModule
+import datetime
 
 import pytorch_lightning as pl
+from pytorch_lightning import loggers as pl_loggers
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import os
-import pandas as pd
 
 
 model_dict = {
@@ -34,6 +36,7 @@ def run(args):
     print(args)
     random_seed(args.seed)
 
+
     model = model_dict[args.model_type](
         input_len=args.input_len,
         output_len=args.output_len,
@@ -44,17 +47,34 @@ def run(args):
         num_layers=args.num_layers,
         lr=args.learning_rate,
     )
-    data = ZeroShotDataModule(args)
+
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath=os.path.join(args.log_dir,args.model_type),
+        filename=f'{args.model_type}-{datetime.datetime.now().strftime("%y%m%d-%H%M")}',
+        monitor='valid_adjusted_smape',
+        mode='min',
+        save_top_k=1
+    )
+
+    wandb.require("core")
+    wandb.init(
+        entity=args.wandb_entity, 
+        project=args.wandb_proj, 
+        name=f'{args.model_type}-{datetime.datetime.now().strftime("%y%m%d-%H%M")}',
+        dir=args.wandb_dir
+    )
+    wandb_logger = pl_loggers.WandbLogger()
     trainer = pl.Trainer(
         devices=[args.gpu_num],
-        logger=False,
+        max_epochs=args.num_epochs,
+        check_val_every_n_epoch=1,
+        logger=wandb_logger,
+        callbacks=[checkpoint_callback]
     )
-    ckpt_path = os.path.join(args.log_dir,args.model_type, f"{args.model_type}-{args.ckpt_name}")
-    trainer.test(model=model, ckpt_path=ckpt_path, datamodule=data)
-    prediction = trainer.predict(model=model, ckpt_path=ckpt_path, datamodule=data)
-    
-    result_df = pd.DataFrame(torch.cat(prediction, dim=0).numpy(), index=data.test_dataset.item_ids)
-    result_df.to_csv(os.path.join(args.result_dir, f"{args.model_type}-{args.ckpt_name}".replace("ckpt","csv")))
+    trainer.fit(model, datamodule=ZeroShotDataModule(args))
+    print(checkpoint_callback.best_model_path)
+    ckpt_path = checkpoint_callback.best_model_path
+    trainer.test(model=model, ckpt_path=ckpt_path, datamodule=ZeroShotDataModule(args))
 
 
 if __name__ == '__main__':
@@ -62,12 +82,10 @@ if __name__ == '__main__':
     # General arguments
     parser.add_argument('--data_dir', type=str, default='../data/lightning')
     parser.add_argument('--log_dir', type=str, default='../log')
-    parser.add_argument('--result_dir', type=str, default='../result')
     parser.add_argument('--seed', type=int, default=21)
     parser.add_argument('--num_epochs', type=int, default=200)
     parser.add_argument('--gpu_num', type=int, default=1)
     parser.add_argument('--learning_rate', type=float, default=0.0001)
-    parser.add_argument('--ckpt_name', type=str, default="")
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='GTM-Transformer')
@@ -79,6 +97,11 @@ if __name__ == '__main__':
     parser.add_argument('--output_len', type=int, default=12)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--num_layers', type=int, default=2)
+
+    # wandb arguments
+    parser.add_argument('--wandb_entity', type=str, default='bonbak')
+    parser.add_argument('--wandb_proj', type=str, default='Zero-Shot-Item-Sales-Forecasting')
+    parser.add_argument('--wandb_dir', type=str, default='../')
 
     args = parser.parse_args()
     run(args)

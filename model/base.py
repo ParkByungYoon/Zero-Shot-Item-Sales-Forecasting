@@ -27,6 +27,12 @@ class PytorchLightningBase(pl.LightningModule):
         with torch.no_grad():
             self.phase_step(test_batch, phase='test')
 
+    def predict_step(self, predict_batch, batch_idx):
+        self.eval()
+        with torch.no_grad():
+            predictions = self.phase_step(predict_batch, phase='predict')
+        return predictions
+
     def get_score(self, gt, pred):
         ad_smape = SymmetricMeanAbsolutePercentageError()
         r2 = R2Score()

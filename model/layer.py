@@ -70,10 +70,10 @@ class FeatureFusionNetwork(nn.Module):
         return features
 
 
-class ItemSalesEncoder(nn.Module):
-    def __init__(self, embedding_dim, input_len, num_items):
+class TransformerEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len, num_vars):
         super().__init__()
-        self.input_linear = TimeDistributed(nn.Linear(num_items, embedding_dim))
+        self.input_linear = TimeDistributed(nn.Linear(num_vars, embedding_dim))
         self.pos_embedding = PositionalEncoding(embedding_dim, max_len=input_len)
         encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
@@ -85,7 +85,8 @@ class ItemSalesEncoder(nn.Module):
         emb = self.encoder(emb)
         return emb
 
-class InversedItemSalesEncoder(nn.Module):
+
+class InversedTransformerEncoder(nn.Module):
     def __init__(self, embedding_dim, input_len):
         super().__init__()
         self.input_linear = TimeDistributed(nn.Linear(input_len, embedding_dim))
