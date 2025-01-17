@@ -21,9 +21,9 @@ class ZeroShotDataset(Dataset):
 
         for item_id in tqdm(self.item_ids, total=len(self.item_ids), ascii=True):
             if item_id not in self.data_dict['sales'].index: continue
-            if item_id not in self.data_dict['category']: continue
-            if item_id not in self.data_dict['color']: continue
-            if item_id not in self.data_dict['fabric']: continue
+            if item_id not in self.data_dict['category_trend'] and item_id[:-2] not in self.data_dict['category_trend']: continue
+            if item_id not in self.data_dict['color_trend']: continue
+            if item_id not in self.data_dict['fabric_trend'] and item_id[:-2] not in self.data_dict['fabric_trend']: continue
             if item_id not in self.data_dict['release_date'].index: continue
             if item_id not in self.data_dict['image_embedding']: continue
             if item_id[:-2] not in self.data_dict['text_embedding']: continue
@@ -31,10 +31,15 @@ class ZeroShotDataset(Dataset):
             
             sales = self.data_dict['sales'].loc[item_id].values
             
-            category_trend = self.data_dict['category'][item_id][:-12]
-            color_trend = self.data_dict['color'][item_id][:-12]
-            fabric_trend = self.data_dict['fabric'][item_id][:-12]
-            ntrend = np.vstack([category_trend, color_trend, fabric_trend])
+            category_trend = self.data_dict['category_trend'][item_id if item_id in self.data_dict['category_trend'] else item_id[:-2]][:-12]
+            color_trend = self.data_dict['color_trend'][item_id][:-12]
+            fabric_trend = self.data_dict['fabric_trend'][item_id if item_id in self.data_dict['fabric_trend'] else item_id[:-2]][:-12]
+            category_sales = self.data_dict['category_sales'][item_id]
+            color_sales = self.data_dict['color_sales'][item_id]
+            fabric_sales = self.data_dict['fabric_sales'][item_id]
+            ntrend = np.vstack([category_trend, color_trend, fabric_trend, category_sales, color_sales, fabric_sales])
+            # ntrend = np.vstack([category_trend, color_trend, fabric_trend])
+            # ntrend = np.vstack([category_sales, color_sales, fabric_sales])
 
             release_date = self.data_dict['release_date'].loc[item_id].values
 
@@ -83,9 +88,12 @@ class ZeroShotDataModule(pl.LightningDataModule):
     def prepare_data(self):
         self.data_dict = {}
         self.data_dict['sales'] = pd.read_csv(os.path.join(self.data_dir, 'sales.csv'), index_col=0).iloc[:,1:] / 1820.0
-        self.data_dict['category'] = pickle.load(open(os.path.join(self.data_dir, 'category.pkl'), 'rb'))
-        self.data_dict['color'] = pickle.load(open(os.path.join(self.data_dir, 'color.pkl'), 'rb'))
-        self.data_dict['fabric'] = pickle.load(open(os.path.join(self.data_dir, 'fabric.pkl'), 'rb'))
+        self.data_dict['category_trend'] = pickle.load(open(os.path.join(self.data_dir, 'category_trend.pkl'), 'rb'))
+        self.data_dict['color_trend'] = pickle.load(open(os.path.join(self.data_dir, 'color_trend.pkl'), 'rb'))
+        self.data_dict['fabric_trend'] = pickle.load(open(os.path.join(self.data_dir, 'fabric_trend.pkl'), 'rb'))
+        self.data_dict['category_sales'] = pickle.load(open(os.path.join(self.data_dir, 'category_sales.pkl'), 'rb'))
+        self.data_dict['color_sales'] = pickle.load(open(os.path.join(self.data_dir, 'color_sales.pkl'), 'rb'))
+        self.data_dict['fabric_sales'] = pickle.load(open(os.path.join(self.data_dir, 'fabric_sales.pkl'), 'rb'))
         self.data_dict['release_date'] = pd.read_csv(os.path.join(self.data_dir, 'release_date.csv'), index_col=0)
         self.data_dict['meta'] = pd.read_csv(os.path.join(self.data_dir, 'meta.csv'), index_col=0)
         self.data_dict['image_embedding'] = pickle.load(open(os.path.join(self.data_dir, 'image_embedding.pkl'), 'rb'))

@@ -18,6 +18,7 @@ import pandas as pd
 model_dict = {
     "GTM-Transformer": GTMTransformer,
     "GTM-iTransformer": GTMiTransformer,
+    "GTMCrossFormer": GTMCrossformer,
 }
 
 def random_seed(seed: int = 42):
@@ -34,23 +35,13 @@ def run(args):
     print(args)
     random_seed(args.seed)
 
-    model = model_dict[args.model_type](
-        input_len=args.input_len,
-        output_len=args.output_len,
-        num_vars=args.num_vars,
-        embedding_dim=args.embedding_dim,
-        hidden_dim=args.hidden_dim,
-        num_heads=args.num_heads,
-        num_layers=args.num_layers,
-        lr=args.learning_rate,
-    )
+    model = model_dict[args.model_type](args)
     data = ZeroShotDataModule(args)
     trainer = pl.Trainer(
         devices=[args.gpu_num],
         logger=False,
     )
     ckpt_path = os.path.join(args.log_dir,args.model_type, f"{args.model_type}-{args.ckpt_name}")
-    trainer.test(model=model, ckpt_path=ckpt_path, datamodule=data)
     prediction = trainer.predict(model=model, ckpt_path=ckpt_path, datamodule=data)
     
     result_df = pd.DataFrame(torch.cat(prediction, dim=0).numpy(), index=data.test_dataset.item_ids)
@@ -79,6 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_len', type=int, default=12)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--num_layers', type=int, default=2)
+    parser.add_argument('--segment_len', type=int, default=4)
 
     args = parser.parse_args()
     run(args)

@@ -20,6 +20,8 @@ import os
 model_dict = {
     "GTM-Transformer": GTMTransformer,
     "GTM-iTransformer": GTMiTransformer,
+    "GTM-Crossformer": GTMCrossformer,
+    "GTM-Fullformer": GTMFullformer,
 }
 
 def random_seed(seed: int = 42):
@@ -37,16 +39,7 @@ def run(args):
     random_seed(args.seed)
 
 
-    model = model_dict[args.model_type](
-        input_len=args.input_len,
-        output_len=args.output_len,
-        num_vars=args.num_vars,
-        embedding_dim=args.embedding_dim,
-        hidden_dim=args.hidden_dim,
-        num_heads=args.num_heads,
-        num_layers=args.num_layers,
-        lr=args.learning_rate,
-    )
+    model = model_dict[args.model_type](args)
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=os.path.join(args.log_dir,args.model_type),
@@ -97,6 +90,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_len', type=int, default=12)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--num_layers', type=int, default=2)
+    parser.add_argument('--segment_len', type=int, default=4)
 
     # wandb arguments
     parser.add_argument('--wandb_entity', type=str, default='bonbak')

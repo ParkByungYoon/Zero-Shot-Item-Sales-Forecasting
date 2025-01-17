@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from einops import rearrange
+
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=104):
         super(PositionalEncoding, self).__init__()
@@ -81,23 +83,8 @@ class TransformerEncoder(nn.Module):
     def forward(self, input):
         if input.dim() <= 2: input = input.unsqueeze(dim=-1)
         emb = self.input_linear(input)
-        emb = self.pos_embedding(emb)
-        emb = self.encoder(emb)
-        return emb
-
-
-class InversedTransformerEncoder(nn.Module):
-    def __init__(self, embedding_dim, input_len):
-        super().__init__()
-        self.input_linear = TimeDistributed(nn.Linear(input_len, embedding_dim))
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-
-    def forward(self, input):
-        input = input.permute(0,2,1)
-        if input.dim() <= 2: input = input.unsqueeze(dim=-1)
-        emb = self.input_linear(input)
-        emb = self.encoder(emb)
+        # emb = self.pos_embedding(emb)
+        # emb = self.encoder(emb)
         return emb
 
 
@@ -159,3 +146,89 @@ class TemporalFeatureEncoder(nn.Module):
         temporal_embeddings = self.dropout(temporal_embeddings)
 
         return temporal_embeddings
+
+
+class InversedTransformerEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len):
+        super(InversedTransformerEncoder, self).__init__()
+        self.input_linear = TimeDistributed(nn.Linear(input_len, embedding_dim))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+    def forward(self, input):
+        input = input.permute(0,2,1)
+        if input.dim() <= 2: input = input.unsqueeze(dim=-1)
+        emb = self.input_linear(input)
+        # emb = self.encoder(emb)
+        return emb
+    
+class SegmentEmbedding(nn.Module):
+    def __init__(self, embedding_dim, segment_len):
+        super().__init__()
+        self.segment_len = segment_len
+        self.linear = nn.Linear(segment_len, embedding_dim)
+
+    def forward(self, x):
+        batch, num_vars, input_len = x.shape
+        x_segment = rearrange(x, 'b d (num_segments segment_len) -> (b d num_segments) segment_len', segment_len = self.segment_len)
+        x_embed = self.linear(x_segment)
+        x_embed = rearrange(x_embed, '(b d num_segments) embedding_dim -> b d num_segments embedding_dim', b = batch, d = num_vars)
+        return x_embed
+
+
+class CrossedTransformerEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len, segment_len):
+        super().__init__()
+        self.input_linear = SegmentEmbedding(embedding_dim, segment_len)
+        self.num_segments = input_len//segment_len
+        self.pos_embedding = PositionalEncoding(embedding_dim, max_len=self.num_segments)
+        time_encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
+        self.time_encoder = nn.TransformerEncoder(time_encoder_layer, num_layers=1)
+        var_encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
+        self.var_encoder = nn.TransformerEncoder(var_encoder_layer, num_layers=1)
+
+    def forward(self, input):
+        batch, num_vars, input_len = input.shape # (64, 3, 52)
+        emb = self.input_linear(input) # (64, 3, 13, 512)
+        # only domain
+        # emb = rearrange(emb, 'b d num_segments embedding_dim -> (b num_segments) d embedding_dim') # (64*13, 3, 512)
+        # emb = self.var_encoder(emb)
+        # emb = rearrange(emb, '(b num_segments) d embedding_dim-> b (num_segments d) embedding_dim', b = batch, num_segments=self.num_segments) # (64, 13*3, 512)
+
+        # time --> domain
+        # emb = rearrange(emb, 'b d num_segments embedding_dim -> (b d) num_segments embedding_dim') # (64*3, 13, 512)
+        # emb = self.pos_embedding(emb)
+        # emb = self.time_encoder(emb)
+        # emb = rearrange(emb, '(b d) num_segments embedding_dim -> (b num_segments) d embedding_dim', b = batch, d = num_vars) # (64*13, 3, 512)
+        # emb = self.var_encoder(emb)
+        # emb = rearrange(emb, '(b num_segments) d embedding_dim-> b (num_segments d) embedding_dim', b = batch, num_segments=self.num_segments) # (64, 13*3, 512)
+
+        # domain --> time
+        emb = rearrange(emb, 'b d num_segments embedding_dim -> (b num_segments) d embedding_dim') # (64*13, 3, 512)
+        emb = self.var_encoder(emb)
+        emb = rearrange(emb, '(b num_segments) d embedding_dim -> (b d) num_segments embedding_dim', b=batch) # (64*3, 13, 512)
+        emb = self.pos_embedding(emb)
+        emb = self.time_encoder(emb)
+        emb = rearrange(emb, '(b d) num_segments embedding_dim-> b (num_segments d) embedding_dim', b = batch) # (64, 13*3, 512)
+        return emb
+
+
+class FullAttentionTransformerEncoder(nn.Module):
+    def __init__(self, embedding_dim, input_len, segment_len):
+        super().__init__()
+        self.input_linear = SegmentEmbedding(embedding_dim, segment_len)
+        self.num_segments = input_len//segment_len
+        self.pos_embedding = PositionalEncoding(embedding_dim, max_len=self.num_segments)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embedding_dim, nhead=4, dropout=0.2)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+
+    def forward(self, input):
+        batch, num_vars, input_len = input.shape # (64, 3, 52)
+        emb = self.input_linear(input) # (64, 3, 13, 512)
+
+        emb = rearrange(emb, 'b d num_segments embedding_dim -> (b d) num_segments embedding_dim') # (64*3, 13, 512)
+        emb = self.pos_embedding(emb)
+        emb = rearrange(emb, '(b d) num_segments embedding_dim-> b (num_segments d) embedding_dim', b = batch) # (64, 13*3, 512)
+        emb = self.encoder(emb)
+        
+        return emb

@@ -1,6 +1,6 @@
 import torch
 import pytorch_lightning as pl
-from torchmetrics.regression import R2Score, SymmetricMeanAbsolutePercentageError
+from torchmetrics.regression import R2Score, SymmetricMeanAbsolutePercentageError, MeanSquaredError, MeanAbsoluteError
 
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -34,19 +34,32 @@ class PytorchLightningBase(pl.LightningModule):
         return predictions
 
     def get_score(self, gt, pred):
-        ad_smape = SymmetricMeanAbsolutePercentageError()
-        r2 = R2Score()
+        adjusted_smape = SymmetricMeanAbsolutePercentageError()
+        r2_score = R2Score()
+        mean_squared_error = MeanSquaredError()
+        mean_absolute_error = MeanAbsoluteError()
+        score = {}
+
         pred = pred.detach().cpu()
         gt = gt.detach().cpu()
 
         if gt.dim() == 1:
-            adjust_smape = ad_smape(pred,gt)*0.5
-            r2_score = r2(pred,gt)
+            adj_smape = adjusted_smape(pred,gt)*0.5
+            r2 = r2_score(pred,gt)
+            mse = mean_squared_error(pred,gt)
+            mae = mean_absolute_error(pred,gt)
         else:
-            adjust_smape = [ad_smape(pred[i], gt[i]) * 0.5 for i in range(len(gt))]
-            adjust_smape = torch.mean(torch.stack(adjust_smape))
-            
-            r2_score = [r2(pred[i], gt[i]) for i in range(len(gt))]
-            r2_score = torch.mean(torch.stack(r2_score))
+            adj_smape, r2, mse, mae = [[] for i in range(4)]
+            for i in range(len(gt)):
+                adj_smape.append(adjusted_smape(pred[i], gt[i]) * 0.5)
+                r2.append(r2_score(pred[i], gt[i]))
+                mse.append(mean_squared_error(pred[i], gt[i]))
+                mae.append(mean_absolute_error(pred[i], gt[i]))
 
-        return adjust_smape, r2_score
+            score['adjusted_smape'] = torch.mean(torch.stack(adj_smape))
+            score['r2_score'] = torch.mean(torch.stack(r2))
+            score['mse'] = torch.mean(torch.stack(mse))
+            score['mae'] = torch.mean(torch.stack(mae))
+            # score['accum_adjusted_smape'] = adjusted_smape(pred.sum(axis=1), gt.sum(axis=1)) * 0.5
+
+        return score
