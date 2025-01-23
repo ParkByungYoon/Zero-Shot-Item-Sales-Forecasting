@@ -24,8 +24,8 @@ class TimeXer(PytorchLightningBase):
         self.save_hyperparameters()
 
         self.exogenous_encoder = ExogenousEncoder(self.hidden_dim, self.input_len)
-        # self.endogenous_encoder = EndogenousEncoder(self.hidden_dim, self.input_len+1, self.num_endo_vars)
-        self.endogenous_encoder = InvertedEndogenousEncoder(self.hidden_dim, self.input_len)
+        self.endogenous_encoder = EndogenousEncoder(self.hidden_dim, self.input_len+1, self.num_endo_vars)
+        # self.endogenous_encoder = InvertedEndogenousEncoder(self.hidden_dim, self.input_len)
         self.temporal_feature_encoder = TemporalFeatureEncoder(self.embedding_dim)
         self.feature_fusion_network = FeatureFusionNetwork(self.embedding_dim, self.hidden_dim)
 

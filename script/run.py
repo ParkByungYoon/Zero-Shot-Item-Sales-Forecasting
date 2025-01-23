@@ -2,6 +2,7 @@ import sys
 sys.path.append('../')
 
 from model.gtm import *
+from model.timexer import *
 import torch
 import argparse
 import numpy as np
@@ -20,8 +21,11 @@ import os
 model_dict = {
     "GTM-Transformer": GTMTransformer,
     "GTM-iTransformer": GTMiTransformer,
+    "GTM-iTransformerV2": GTMiTransformerV2,
     "GTM-Crossformer": GTMCrossformer,
+    "GTM-CrossformerV2": GTMCrossformerV2,
     "GTM-Fullformer": GTMFullformer,
+    "TimeXer": TimeXer,
 }
 
 def random_seed(seed: int = 42):
@@ -73,7 +77,7 @@ def run(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Zero-Shot-Item-Sales-Forecasting')
     # General arguments
-    parser.add_argument('--data_dir', type=str, default='../data/lightning')
+    parser.add_argument('--data_dir', type=str, default='/SSL_NAS/SFLAB/mind_bridge/preprocessed')
     parser.add_argument('--log_dir', type=str, default='../log')
     parser.add_argument('--seed', type=int, default=21)
     parser.add_argument('--num_epochs', type=int, default=200)
@@ -82,7 +86,9 @@ if __name__ == '__main__':
 
     # Model specific arguments
     parser.add_argument('--model_type', type=str, default='GTM-Transformer')
-    parser.add_argument('--num_vars', type=int, default=3)
+    parser.add_argument('--num_endo_vars', type=int, default=3)
+    parser.add_argument('--num_exo_vars', type=int, default=47)
+    parser.add_argument('--num_vars', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--embedding_dim', type=int, default=512)
     parser.add_argument('--hidden_dim', type=int, default=512)
