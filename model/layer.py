@@ -196,20 +196,20 @@ class CrossedTransformerEncoder(nn.Module):
         # emb = rearrange(emb, '(b num_segments) d embedding_dim-> b (num_segments d) embedding_dim', b = batch, num_segments=self.num_segments) # (64, 13*3, 512)
 
         # time --> domain
-        # emb = rearrange(emb, 'b d num_segments embedding_dim -> (b d) num_segments embedding_dim') # (64*3, 13, 512)
-        # emb = self.pos_embedding(emb)
-        # emb = self.time_encoder(emb)
-        # emb = rearrange(emb, '(b d) num_segments embedding_dim -> (b num_segments) d embedding_dim', b = batch, d = num_vars) # (64*13, 3, 512)
-        # emb = self.var_encoder(emb)
-        # emb = rearrange(emb, '(b num_segments) d embedding_dim-> b (num_segments d) embedding_dim', b = batch, num_segments=self.num_segments) # (64, 13*3, 512)
-
-        # domain --> time
-        emb = rearrange(emb, 'b d num_segments embedding_dim -> (b num_segments) d embedding_dim') # (64*13, 3, 512)
-        emb = self.var_encoder(emb)
-        emb = rearrange(emb, '(b num_segments) d embedding_dim -> (b d) num_segments embedding_dim', b=batch) # (64*3, 13, 512)
+        emb = rearrange(emb, 'b d num_segments embedding_dim -> (b d) num_segments embedding_dim') # (64*3, 13, 512)
         emb = self.pos_embedding(emb)
         emb = self.time_encoder(emb)
-        emb = rearrange(emb, '(b d) num_segments embedding_dim-> b (num_segments d) embedding_dim', b = batch) # (64, 13*3, 512)
+        emb = rearrange(emb, '(b d) num_segments embedding_dim -> (b num_segments) d embedding_dim', b = batch, d = num_vars) # (64*13, 3, 512)
+        emb = self.var_encoder(emb)
+        emb = rearrange(emb, '(b num_segments) d embedding_dim-> b (num_segments d) embedding_dim', b = batch, num_segments=self.num_segments) # (64, 13*3, 512)
+
+        # domain --> time
+        # emb = rearrange(emb, 'b d num_segments embedding_dim -> (b num_segments) d embedding_dim') # (64*13, 3, 512)
+        # emb = self.var_encoder(emb)
+        # emb = rearrange(emb, '(b num_segments) d embedding_dim -> (b d) num_segments embedding_dim', b=batch) # (64*3, 13, 512)
+        # emb = self.pos_embedding(emb)
+        # emb = self.time_encoder(emb)
+        # emb = rearrange(emb, '(b d) num_segments embedding_dim-> b (num_segments d) embedding_dim', b = batch) # (64, 13*3, 512)
         return emb
 
 

@@ -7,7 +7,7 @@ import argparse
 import numpy as np
 import wandb
 import random
-from util.datamodule import ZeroShotDataModule
+from util.datamodule import MultiVariateDataModule
 import datetime
 
 import pytorch_lightning as pl
@@ -64,10 +64,10 @@ def run(args):
         logger=wandb_logger,
         callbacks=[checkpoint_callback]
     )
-    trainer.fit(model, datamodule=ZeroShotDataModule(args))
+    trainer.fit(model, datamodule=MultiVariateDataModule(args))
     print(checkpoint_callback.best_model_path)
     ckpt_path = checkpoint_callback.best_model_path
-    trainer.test(model=model, ckpt_path=ckpt_path, datamodule=ZeroShotDataModule(args))
+    trainer.test(model=model, ckpt_path=ckpt_path, datamodule=MultiVariateDataModule(args))
 
 
 if __name__ == '__main__':

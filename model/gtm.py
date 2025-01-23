@@ -3,6 +3,8 @@ import torch.nn.functional as F
 
 from model.layer import *
 from model.base import PytorchLightningBase
+
+from einops import rearrange
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -32,8 +34,8 @@ class GTMTransformer(PytorchLightningBase):
             nn.Dropout(0.2)
         )
 
-    def forward(self, ntrends, release_dates, image_embedding, text_embedding, meta_data):
-        encoder_embedding = self.transformer_encoder(ntrends)
+    def forward(self, inputs, release_dates, image_embedding, text_embedding, meta_data):
+        encoder_embedding = self.transformer_encoder(inputs)
         temporal_embedding = self.temporal_feature_encoder(release_dates)
         fusion_embedding = self.feature_fusion_network(image_embedding, text_embedding, temporal_embedding, meta_data)
             
@@ -45,8 +47,8 @@ class GTMTransformer(PytorchLightningBase):
         return forecast.view(-1, self.output_len), attn_weights
 
     def phase_step(self, batch, phase):
-        item_sales, ntrends, release_dates, image_embeddings, text_embeddings, meta_data = batch
-        forecasted_sales, _ = self.forward(ntrends, release_dates, image_embeddings, text_embeddings, meta_data)
+        item_sales, inputs, release_dates, image_embeddings, text_embeddings, meta_data = batch
+        forecasted_sales, _ = self.forward(inputs, release_dates, image_embeddings, text_embeddings, meta_data)
         if phase != 'predict':
             score = self.get_score(item_sales, forecasted_sales)
             score['loss'] = F.mse_loss(item_sales, forecasted_sales.squeeze())
@@ -65,12 +67,61 @@ class GTMiTransformer(GTMTransformer):
         self.transformer_encoder = InversedTransformerEncoder(self.hidden_dim, self.input_len)
 
 
+class GTMiTransformerV2(GTMiTransformer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, inputs, release_dates, image_embedding, text_embedding, meta_data):
+        encoder_embedding = self.transformer_encoder(inputs)
+        meta_idx = torch.stack([meta_data[:,:27].argmax(dim=1),\
+                                meta_data[:,27:34].argmax(dim=1)+27, \
+                                meta_data[:,34:].argmax(dim=1)+34],axis=-1).unsqueeze(-1).expand(-1, -1, self.hidden_dim)
+        encoder_embedding = encoder_embedding.gather(dim=1, index=meta_idx)
+
+        temporal_embedding = self.temporal_feature_encoder(release_dates)
+        fusion_embedding = self.feature_fusion_network(image_embedding, text_embedding, temporal_embedding, meta_data)
+            
+        tgt = fusion_embedding.unsqueeze(0)
+        memory = encoder_embedding
+        decoder_out, attn_weights = self.decoder(tgt, memory)
+        forecast = self.decoder_fc(decoder_out)
+
+        return forecast.view(-1, self.output_len), attn_weights
+
+
 class GTMCrossformer(GTMTransformer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.transformer_encoder = CrossedTransformerEncoder(self.hidden_dim, self.input_len, self.segment_len)
 
-class GTMFullformer(GTMTransformer):
+
+class GTMCrossformerV2(GTMCrossformer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, inputs, release_dates, image_embedding, text_embedding, meta_data):
+        encoder_embedding = self.transformer_encoder(inputs)
+        num_segments = self.transformer_encoder.num_segments
+        encoder_embedding = rearrange(encoder_embedding, 'b (num_segments d) embedding_dim-> b d num_segments embedding_dim', num_segments=num_segments)
+        meta_idx = torch.stack([meta_data[:,:27].argmax(dim=1),\
+                                meta_data[:,27:34].argmax(dim=1)+27, \
+                                meta_data[:,34:].argmax(dim=1)+34],axis=-1).unsqueeze(-1).expand(-1, -1, self.hidden_dim).unsqueeze(2).expand(-1, -1, num_segments, -1)
+        encoder_embedding = encoder_embedding.gather(dim=1, index=meta_idx)
+        encoder_embedding = rearrange(encoder_embedding, 'b d num_segments embedding_dim-> b (num_segments d) embedding_dim')
+
+
+        temporal_embedding = self.temporal_feature_encoder(release_dates)
+        fusion_embedding = self.feature_fusion_network(image_embedding, text_embedding, temporal_embedding, meta_data)
+            
+        tgt = fusion_embedding.unsqueeze(0)
+        memory = encoder_embedding
+        decoder_out, attn_weights = self.decoder(tgt, memory)
+        forecast = self.decoder_fc(decoder_out)
+
+        return forecast.view(-1, self.output_len), attn_weights
+
+
+class GTMFullformer(GTMCrossformer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.transformer_encoder = FullAttentionTransformerEncoder(self.hidden_dim, self.input_len, self.segment_len)
