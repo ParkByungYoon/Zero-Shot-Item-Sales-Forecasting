@@ -135,16 +135,22 @@ class MultiVariateDataset(Dataset):
         for item_id in tqdm(self.item_ids, total=len(self.item_ids), ascii=True):
             if item_id not in self.data_dict['sales'].index: continue
             if item_id not in self.data_dict['release_date'].index: continue
-            if item_id not in self.data_dict['image_embedding']: continue
-            if item_id[:-2] not in self.data_dict['text_embedding']: continue
             if item_id not in self.data_dict['meta'].index: continue
             
             sales = self.data_dict['sales'].loc[item_id].values
             release_idx = self.data_dict['release_idx'][item_id]
             release_date = self.data_dict['release_date'].loc[item_id].values
+            
+            if item_id not in self.data_dict['image_embedding']:
+                img_emb = np.random.normal(size=512).tolist()
+            else: 
+                img_emb = self.data_dict['image_embedding'][item_id]
+            
+            if item_id[:-2] not in self.data_dict['text_embedding']:
+                txt_emb = np.random.normal(size=512).tolist()
+            else: 
+                txt_emb = self.data_dict['text_embedding'][item_id[:-2]]
 
-            img_emb = self.data_dict['image_embedding'][item_id]
-            txt_emb = self.data_dict['text_embedding'][item_id[:-2]]
             meta = self.data_dict['meta'].loc[item_id].values
             
             item_sales.append(sales)
